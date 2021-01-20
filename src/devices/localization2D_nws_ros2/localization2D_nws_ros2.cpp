@@ -96,7 +96,7 @@ void Localization2D_nws_ros2::run()
         m_stats_time_last = yarp::os::Time::now();
     }
 
-    if (m_getdata_using_periodic_thread)
+    if (m_iLoc!=nullptr)
     {
         bool ret = m_iLoc->getLocalizationStatus(m_current_status);
         if (ret == false)
@@ -129,10 +129,10 @@ void Localization2D_nws_ros2::run()
         {
             yCWarning(LOCALIZATION2D_NWS_ROS2, "The system is not properly localized!");
         }
+        
+		if (1) publish_odometry_on_ROS_topic();
+		if (1) publish_odometry_on_TF_topic();
     }
-
-    if (1) publish_odometry_on_ROS_topic();
-    if (1) publish_odometry_on_TF_topic();
 }
 
 bool Localization2D_nws_ros2::open(yarp::os::Searchable &config)

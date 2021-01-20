@@ -29,6 +29,7 @@ target_link_libraries(yarp_localization2D_nws_ros2
     sensor_msgs::sensor_msgs__rosidl_typesupport_cpp
     nav_msgs::nav_msgs__rosidl_typesupport_cpp
     geometry_msgs::geometry_msgs__rosidl_typesupport_cpp
+    tf2_msgs::tf2_msgs__rosidl_typesupport_cpp
 )
 
 yarp_install(

@@ -82,7 +82,6 @@ private:
     double                                  m_period;
     yarp::os::Stamp                         m_loc_stamp;
     yarp::os::Stamp                         m_odom_stamp;
-    bool                                    m_getdata_using_periodic_thread;
 
     yarp::dev::OdometryData                     m_current_odometry;
     yarp::dev::Nav2D::Map2DLocation             m_current_position;
