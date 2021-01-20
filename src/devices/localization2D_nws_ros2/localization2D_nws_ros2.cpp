@@ -89,7 +89,7 @@ void Localization2D_nws_ros2::detach()
 
 void Localization2D_nws_ros2::run()
 {
-	    double m_stats_time_curr = yarp::os::Time::now();
+	double m_stats_time_curr = yarp::os::Time::now();
     if (m_stats_time_curr - m_stats_time_last > 5.0)
     {
         yCInfo(LOCALIZATION2D_NWS_ROS2) << "Running";
@@ -106,9 +106,6 @@ void Localization2D_nws_ros2::run()
 
         if (m_current_status == LocalizationStatusEnum::localization_status_localized_ok)
         {
-            //update the stamp
-
-
             bool ret2 = m_iLoc->getCurrentPosition(m_current_position);
             if (ret2 == false)
             {
@@ -136,59 +133,6 @@ void Localization2D_nws_ros2::run()
 
     if (1) publish_odometry_on_ROS_topic();
     if (1) publish_odometry_on_TF_topic();
-	
-	/*
-    yCTrace(LOCALIZATION2D_NWS_ROS2);
-    auto message = std_msgs::msg::String();
-    
-    if (m_iDevice!=nullptr)
-    {
-        bool ret = true;
-        IRangefinder2D::Device_status status;
-        yarp::sig::Vector ranges;
-        ret &= m_iDevice->getRawData(ranges);
-        ret &= m_iDevice->getDeviceStatus(status);
-        
-        if (ret)
-        {
-            int ranges_size = ranges.size();
-
-            sensor_msgs::msg::LaserScan rosData;
-
-            rosData.header.stamp = Ros2Init::get().node->get_clock()->now();    //@@@@@@@@@@@ CHECK HERE: simulation time?
-            rosData.header.frame_id = m_frame_id;
-            rosData.angle_min = m_minAngle * M_PI / 180.0;
-            rosData.angle_max = m_maxAngle * M_PI / 180.0;
-            rosData.angle_increment = m_resolution * M_PI / 180.0;
-            rosData.time_increment = 0;             // all points in a single scan are considered took at the very same time
-            rosData.scan_time = getPeriod();        // time elapsed between two successive readings
-            rosData.range_min = m_minDistance;
-            rosData.range_max = m_maxDistance;
-            rosData.ranges.resize(ranges_size);
-            rosData.intensities.resize(ranges_size);
-
-            for (int i = 0; i < ranges_size; i++)
-            {
-                // in yarp, NaN is used when a scan value is missing. For example when the angular range of the rangefinder is smaller than 360.
-                // is ros, NaN is not used. Hence this check replaces NaN with inf.
-                if (std::isnan(ranges[i]))
-                {
-                   rosData.ranges[i] = std::numeric_limits<double>::infinity();
-                   rosData.intensities[i] = 0.0;
-                }
-                else
-                {
-                   rosData.ranges[i] = ranges[i];
-                   rosData.intensities[i] = 0.0;
-                }
-            }
-            m_publisher->publish(rosData);
-        }
-        else
-        {
-            yCError(LOCALIZATION2D_NWS_ROS2, "Sensor returned error");
-        }
-    }*/
 }
 
 bool Localization2D_nws_ros2::open(yarp::os::Searchable &config)
@@ -216,16 +160,40 @@ bool Localization2D_nws_ros2::open(yarp::os::Searchable &config)
     }
  
     //wrapper params
-    m_topic    = config.check("topic",  yarp::os::Value("laser_topic"), "Name of the ROS2 topic").asString();
-    m_frame_id = config.check("frame",  yarp::os::Value("laser_frame"), "Name of the frameId").asString();
+    if (config.check("ROS"))
+    {
+        Bottle& ros_group = config.findGroup("ROS");
+        if (!ros_group.check("parent_frame_id"))
+        {
+            yCError(LOCALIZATION2D_NWS_ROS2) << "Missing 'parent_frame_id' parameter";
+            //return false;
+        }
+        else
+        {
+            m_parent_frame_id = ros_group.find("parent_frame_id").asString();
+        }
+        if (!ros_group.check("child_frame_id"))
+        {
+            yCError(LOCALIZATION2D_NWS_ROS2) << "Missing 'child_frame_id' parameter";
+            //return false;
+        }
+        else
+        {
+            m_child_frame_id = ros_group.find("child_frame_id").asString();
+        }
+    }
+    else
+    {
+	}
+	
     m_period   = config.check("period", yarp::os::Value(0.010), "Period of the thread").asFloat64();
        
-    //create the topic
-    yCTrace(LOCALIZATION2D_NWS_ROS2);
-
-    m_publisher_odom = Ros2Init::get().node->create_publisher<nav_msgs::msg::Odometry>(m_topic, 10);
-    m_publisher_tf   = Ros2Init::get().node->create_publisher<tf2_msgs::msg::TFMessage>(m_topic, 10);
-    yCInfo(LOCALIZATION2D_NWS_ROS2, "Opened topic: %s", m_topic.c_str());
+    //create the topics
+    const std::string m_odom_topic ="/odom";
+    const std::string m_tf_topic ="/tf";   
+    m_publisher_odom = Ros2Init::get().node->create_publisher<nav_msgs::msg::Odometry>(m_odom_topic, 10);
+    m_publisher_tf   = Ros2Init::get().node->create_publisher<tf2_msgs::msg::TFMessage>(m_tf_topic, 10);
+    yCInfo(LOCALIZATION2D_NWS_ROS2, "Opened topics: %s, %s", m_odom_topic.c_str(), m_tf_topic.c_str());
         
     //start the publishig thread
     setPeriod(m_period);
@@ -242,28 +210,28 @@ void Localization2D_nws_ros2::publish_odometry_on_TF_topic()
 {
     tf2_msgs::msg::TFMessage rosData;
 
-    yarp::rosmsg::geometry_msgs::TransformStamped transform;
-    transform.child_frame_id = m_child_frame_id;
-    transform.header.frame_id = m_parent_frame_id;
-    transform.header.seq = m_odom_stamp.getCount();
-    transform.header.stamp = m_odom_stamp.getTime();
+    geometry_msgs::msg::TransformStamped tsData;
+    tsData.child_frame_id = m_child_frame_id;
+    tsData.header.frame_id = m_parent_frame_id;
+    tsData.header.stamp = Ros2Init::get().node->get_clock()->now();   //@@@@@@@@@@@ CHECK HERE: simulation time?
     double halfYaw = m_current_odometry.odom_theta / 180.0 * M_PI * 0.5;
     double cosYaw = cos(halfYaw);
     double sinYaw = sin(halfYaw);
-    transform.transform.rotation.x = 0;
-    transform.transform.rotation.y = 0;
-    transform.transform.rotation.z = sinYaw;
-    transform.transform.rotation.w = cosYaw;
-    transform.transform.translation.x = m_current_odometry.odom_x;
-    transform.transform.translation.y = m_current_odometry.odom_y;
-    transform.transform.translation.z = 0;
+    tsData.transform.rotation.x = 0;
+    tsData.transform.rotation.y = 0;
+    tsData.transform.rotation.z = sinYaw;
+    tsData.transform.rotation.w = cosYaw;
+    tsData.transform.translation.x = m_current_odometry.odom_x;
+    tsData.transform.translation.y = m_current_odometry.odom_y;
+    tsData.transform.translation.z = 0;
+    
     if (rosData.transforms.size() == 0)
     {
-        rosData.transforms.push_back(transform);
+        rosData.transforms.push_back(tsData);
     }
     else
     {
-        rosData.transforms[0] = transform;
+        rosData.transforms[0] = tsData;
     }
 
     m_publisher_tf->publish(rosData);
@@ -273,34 +241,32 @@ void Localization2D_nws_ros2::publish_odometry_on_ROS_topic()
 {
     nav_msgs::msg::Odometry rosData;
 
-        odom.clear();
-        odom.header.frame_id = m_fixed_frame;
-        odom.header.seq = m_odom_stamp.getCount();
-        odom.header.stamp = m_odom_stamp.getTime();
-        odom.child_frame_id = m_robot_frame;
+    rosData.header.frame_id = m_fixed_frame;
+    rosData.header.stamp = Ros2Init::get().node->get_clock()->now();   //@@@@@@@@@@@ CHECK HERE: simulation time?
+    rosData.child_frame_id = m_robot_frame;
 
-        odom.pose.pose.position.x = m_current_odometry.odom_x;
-        odom.pose.pose.position.y = m_current_odometry.odom_y;
-        odom.pose.pose.position.z = 0;
-        yarp::sig::Vector vecrpy(3);
-        vecrpy[0] = 0;
-        vecrpy[1] = 0;
-        vecrpy[2] = m_current_odometry.odom_theta;
-        yarp::sig::Matrix matrix = yarp::math::rpy2dcm(vecrpy);
-        yarp::math::Quaternion q; q.fromRotationMatrix(matrix);
-        odom.pose.pose.orientation.x = q.x();
-        odom.pose.pose.orientation.y = q.y();
-        odom.pose.pose.orientation.z = q.z();
-        odom.pose.pose.orientation.w = q.w();
-        //odom.pose.covariance = 0;
+    rosData.pose.pose.position.x = m_current_odometry.odom_x;
+    rosData.pose.pose.position.y = m_current_odometry.odom_y;
+    rosData.pose.pose.position.z = 0;
+    yarp::sig::Vector vecrpy(3);
+    vecrpy[0] = 0;
+    vecrpy[1] = 0;
+    vecrpy[2] = m_current_odometry.odom_theta;
+    yarp::sig::Matrix matrix = yarp::math::rpy2dcm(vecrpy);
+    yarp::math::Quaternion q; q.fromRotationMatrix(matrix);
+    rosData.pose.pose.orientation.x = q.x();
+    rosData.pose.pose.orientation.y = q.y();
+    rosData.pose.pose.orientation.z = q.z();
+    rosData.pose.pose.orientation.w = q.w();
+    //rosData.pose.covariance = 0;
 
-        odom.twist.twist.linear.x = m_current_odometry.base_vel_x;
-        odom.twist.twist.linear.y = m_current_odometry.base_vel_y;
-        odom.twist.twist.linear.z = 0;
-        odom.twist.twist.angular.x = 0;
-        odom.twist.twist.angular.y = 0;
-        odom.twist.twist.angular.z = m_current_odometry.base_vel_theta;
-        //odom.twist.covariance = 0;
+    rosData.twist.twist.linear.x = m_current_odometry.base_vel_x;
+    rosData.twist.twist.linear.y = m_current_odometry.base_vel_y;
+    rosData.twist.twist.linear.z = 0;
+    rosData.twist.twist.angular.x = 0;
+    rosData.twist.twist.angular.y = 0;
+    rosData.twist.twist.angular.z = m_current_odometry.base_vel_theta;
+    //rosData.twist.covariance = 0;
 
-        m_publisher_odom->publish(rosData);
+    m_publisher_odom->publish(rosData);
 }

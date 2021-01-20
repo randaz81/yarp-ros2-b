@@ -18,6 +18,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_msgs/msg/tf_message.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <yarp/math/Math.h>
 
 #include <mutex>
 
@@ -70,6 +71,12 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr   m_publisher_odom;
     rclcpp::Publisher<tf2_msgs::msg::TFMessage>::SharedPtr  m_publisher_tf;    
     bool m_isDeviceOwned = false;
+    
+    std::string                                           m_child_frame_id;
+    std::string                                           m_parent_frame_id;
+    std::string                                     m_robot_frame;
+    std::string                                     m_fixed_frame;
+      
     
     double                                  m_stats_time_last;
     double                                  m_period;
